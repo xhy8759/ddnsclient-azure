@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
@@ -15,7 +16,7 @@ import (
 )
 
 const (
-	SleepInSeconds = 300
+	SleepInSeconds  = 300
 	DnsTtlInSeconds = 3600
 )
 
@@ -57,20 +58,20 @@ func getIpv4() net.IP {
 	return ip.To4()
 }
 
-func updateDnsRecords(ip net.IP, client *armdns.RecordSetsClient) {
+func updateDnsRecords(ip net.IP, client *armdns.RecordSetsClient, resouceGroup string, domainName string) {
 	ctx := context.TODO()
 	ipStr := ip.String()
 
 	switch len(ip) {
 	case net.IPv4len:
 		resp, err := client.CreateOrUpdate(ctx,
-			"domain",
-			"ph0en1xlab.com",
-			"nas",
+			resouceGroup,
+			domainName,
+			"@",
 			armdns.RecordTypeA,
 			armdns.RecordSet{
 				Properties: &armdns.RecordSetProperties{
-					ARecords: []*armdns.ARecord {
+					ARecords: []*armdns.ARecord{
 						{
 							IPv4Address: &ipStr,
 						},
@@ -86,13 +87,13 @@ func updateDnsRecords(ip net.IP, client *armdns.RecordSetsClient) {
 		}
 	case net.IPv6len:
 		resp, err := client.CreateOrUpdate(ctx,
-			"domain",
-			"ph0en1xlab.com",
-			"nas",
+			resouceGroup,
+			domainName,
+			"@",
 			armdns.RecordTypeAAAA,
 			armdns.RecordSet{
 				Properties: &armdns.RecordSetProperties{
-					AaaaRecords: []*armdns.AaaaRecord {
+					AaaaRecords: []*armdns.AaaaRecord{
 						{
 							IPv6Address: &ipStr,
 						},
@@ -110,15 +111,18 @@ func updateDnsRecords(ip net.IP, client *armdns.RecordSetsClient) {
 }
 
 func main() {
+	resouceGroup := os.Getenv("AZURE_RESOURCE_GROUP")
+	domainName := os.Getenv("AZURE_DOMAIN_NAME")
+	subscriptionID := os.Getenv("AZURE_SUBSCRIPTION_ID")
 	// Need to set the following envs:
 	// AZURE_TENANT_ID
 	// AZURE_CLIENT_ID
-	// AZURE_CLIENT_SECRET
+	// AZURE_CLIENT_SECRET or AZURE_CLIENT_CERTIFICATE_PATH
 	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
 		_ = fmt.Errorf("Failed to get AAD identity: %s\n", err)
 	}
-	clientFactory, err := armdns.NewClientFactory("37672895-30c9-4441-bd71-126539298711",
+	clientFactory, err := armdns.NewClientFactory(subscriptionID,
 		cred,
 		nil)
 	if err != nil {
@@ -133,13 +137,13 @@ func main() {
 		ipv6 := getIpv6()
 		if !bytes.Equal(ipv4, previousIpv4) {
 			fmt.Printf("IPV4 change from %s to %s\n", previousIpv4.String(), ipv4.String())
-			updateDnsRecords(ipv4, client)
+			updateDnsRecords(ipv4, client, resouceGroup, domainName)
 			previousIpv4 = ipv4
 		}
 
 		if !bytes.Equal(ipv6, previousIpv6) {
 			fmt.Printf("IPV6 change from %s to %s\n", previousIpv6.String(), ipv6.String())
-			updateDnsRecords(ipv6, client)
+			updateDnsRecords(ipv6, client, resouceGroup, domainName)
 			previousIpv6 = ipv6
 		}
 
